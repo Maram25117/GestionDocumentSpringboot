@@ -13,56 +13,76 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import java.io.IOException;
 import java.util.List;
 
+       @RestController
+       @RequestMapping("/file")
+       public class FileController {
 
-@RestController
-@RequestMapping("/file")
-public class FileController {
+           @Autowired
+           private FileService fileService;
 
-    @Autowired
-    private FileService fileService;
+           @GetMapping("/matiere/{matiereId}/{fileType}")
+           public List<File> getFilesByMatiereAndType(@PathVariable Long matiereId, @PathVariable String fileType) {
+               return fileService.getFilesByMatiereAndType(matiereId, fileType);
+           }
 
-    @GetMapping
-    public List<File> getAllFiles() {
-        return fileService.getAllFiles();
-    } //affichage de tous les fichiers lors du chargement du page
+           @PostMapping("/upload")
+           @PreAuthorize("hasRole('ADMIN')")
+           public ResponseEntity<?> uploadFiles(
+                   @RequestParam("files") MultipartFile[] files,
+                   @RequestParam("matiereId") Long matiereId,
+                   @RequestParam("type") String fileType) {
+               try {
+                   for (MultipartFile file : files) {
+                       fileService.saveFile(file, matiereId, fileType);
+                   }
+                   return ResponseEntity.ok(new ResponseMessage("Fichiers téléchargés avec succès"));
+               } catch (IOException e) {
+                   e.printStackTrace();
+                   return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(new ResponseMessage("Erreur lors du téléversement des fichiers"));
+               }
+           }
 
-    @PostMapping("/upload")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> uploadFiles(@RequestParam("files") MultipartFile[] files) {
-        try {
-            for (MultipartFile file : files) {
-                fileService.saveFile(file);
-            }
-            return ResponseEntity.ok("Fichiers téléchargés avec succès");
-        } catch (IOException e) {
-            // Log the exception for debugging
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur lors du téléversement des fichiers");
-        } catch (Exception e) {
-            // Catch any other exceptions
-            e.printStackTrace();
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur inconnue lors du téléversement des fichiers");
-        }
-    }
+           @GetMapping("/{id}")
+           public ResponseEntity<FileSystemResource> getFile(@PathVariable Long id) {
+               File fileEntity = fileService.getFile(id);
+               if (fileEntity != null) {
+                   FileSystemResource resource = new FileSystemResource(fileEntity.getPath());
+                   HttpHeaders headers = new HttpHeaders();
+                   headers.add("Content-Disposition", "inline; filename=" + fileEntity.getName());
+                   return ResponseEntity.ok().headers(headers).body(resource);
+               } else {
+                   return ResponseEntity.notFound().build();
+               }
+           }
+
+           @DeleteMapping("/{id}")
+           @PreAuthorize("hasRole('ADMIN')")
+           public ResponseEntity<?> deleteFile(@PathVariable Long id) {
+               boolean deleted = fileService.deleteFile(id);
+               if (deleted) {
+                   return ResponseEntity.ok(new ResponseMessage("Fichier supprimé avec succès"));
+               } else {
+                   return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ResponseMessage("Fichier non trouvé"));
+               }
+           }
+
+           // ResponseMessage class for wrapping responses
+           public static class ResponseMessage {
+               private String message;
+
+               public ResponseMessage(String message) {
+                   this.message = message;
+               }
+
+               public String getMessage() {
+                   return message;
+               }
+
+               public void setMessage(String message) {
+                   this.message = message;
+               }
+           }
+       }
 
 
-    @GetMapping("/{id}")
-    public ResponseEntity<FileSystemResource> getFile(@PathVariable Long id) {
-        File fileEntity = fileService.getFile(id);
-        if (fileEntity != null) {
-            FileSystemResource resource = new FileSystemResource(fileEntity.getPath());
-            HttpHeaders headers = new HttpHeaders();
-            headers.add("Content-Disposition", "inline; filename=" + fileEntity.getName());
-            return ResponseEntity.ok().headers(headers).body(resource);
-        } else {
-            return ResponseEntity.notFound().build();
-        }
-    } //affichage du fichier lorsque on clique sur lui
 
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<String> deleteFile(@PathVariable Long id) {
-        fileService.deleteFile(id);
-        return ResponseEntity.ok("Fichier supprimé avec succès");
-    }
-}

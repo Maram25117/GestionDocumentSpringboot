@@ -1,17 +1,21 @@
 package com.example.Gestiondocument.model;
-
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import javax.persistence.*;
 
 @Entity
 public class File {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    private String type;
     private String name;
     private String path;
+
+
+    @ManyToOne
+    @JoinColumn(name = "matiere_id")
+    @JsonIgnore
+    private Matiere matiere;
 
     // Getters and Setters
     public Long getId() {
@@ -36,5 +40,20 @@ public class File {
 
     public void setPath(String path) {
         this.path = path;
+    }
+     public String getType() {
+        return type;
+    }
+
+    public void setType(String type) {
+        this.type = type;
+    }
+
+    public Matiere getMatiere() {
+        return matiere;
+    }
+
+    public void setMatiere(Matiere matiere) {
+        this.matiere = matiere;
     }
 }

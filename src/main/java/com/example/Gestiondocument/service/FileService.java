@@ -1,17 +1,23 @@
 package com.example.Gestiondocument.service;
 
 import com.example.Gestiondocument.model.File;
+import com.example.Gestiondocument.model.Matiere;
 import com.example.Gestiondocument.repository.FileRepository;
+import com.example.Gestiondocument.repository.MatiereRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import org.apache.commons.io.FilenameUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class FileService {
@@ -21,54 +27,71 @@ public class FileService {
     @Autowired
     private FileRepository fileRepository;
 
-    public FileService() {
-        java.io.File uploadDir = new java.io.File(UPLOAD_DIR);
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs(); // Utilisez mkdirs() pour créer les sous-répertoires si nécessaire
-        }
+    @Autowired
+    private MatiereRepository matiereRepository;
+
+    public List<File> getFilesByMatiereAndType(Long matiereId, String fileType) {
+        return fileRepository.findByMatiereIdAndType(matiereId, fileType);
     }
 
-    public List<File> getAllFiles() {
-        return fileRepository.findAll();
-    }
-
-    public File saveFile(MultipartFile file) throws IOException {
-        if (file.isEmpty()) {
-            throw new IOException("Cannot save an empty file.");
+    public void saveFile(MultipartFile file, Long matiereId, String fileType) throws IOException {
+        Path uploadPath = Paths.get(UPLOAD_DIR, matiereId.toString(), fileType);
+        if (!Files.exists(uploadPath)) {
+            Files.createDirectories(uploadPath);
         }
 
         String fileName = file.getOriginalFilename();
-        Path path = Paths.get(UPLOAD_DIR + fileName);
+        Path filePath = uploadPath.resolve(fileName);
 
-        // Assurez-vous que le répertoire existe
-        Files.createDirectories(path.getParent());
+        if (Files.exists(filePath)) {
+            fileName = generateUniqueFileName(fileName);
+            filePath = uploadPath.resolve(fileName);
+        }
 
         try (InputStream inputStream = file.getInputStream()) {
-            Files.copy(inputStream, path);
+            Files.copy(inputStream, filePath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
-            throw new IOException("Failed to store file " + fileName, e);
+            throw new IOException("Failed to save file " + fileName, e);
         }
 
-        File newFile = new File();
-        newFile.setName(fileName);
-        newFile.setPath(path.toString());
-        return fileRepository.save(newFile);
+        // Retrieve Matiere entity and set it in the File entity
+        Optional<Matiere> matiereOpt = matiereRepository.findById(matiereId);
+        if (matiereOpt.isPresent()) {
+            File fileEntity = new File();
+            fileEntity.setName(fileName);
+            fileEntity.setPath(filePath.toString());
+            fileEntity.setType(fileType);
+            fileEntity.setMatiere(matiereOpt.get());
+            fileRepository.save(fileEntity);
+        } else {
+            throw new IllegalArgumentException("Matiere with id " + matiereId + " not found");
+        }
     }
 
-    public void deleteFile(Long id) {
-        File file = getFile(id);
-        if (file != null) {
-            java.io.File fileToDelete = new java.io.File(file.getPath());
-            if (fileToDelete.exists()) {
-                fileToDelete.delete();
-            }
-            fileRepository.deleteById(id);
-        }
+    private String generateUniqueFileName(String originalFileName) {
+        String fileNameWithoutExt = FilenameUtils.getBaseName(originalFileName);
+        String extension = FilenameUtils.getExtension(originalFileName);
+        return fileNameWithoutExt + "_" + System.currentTimeMillis() + "." + extension;
     }
 
     public File getFile(Long id) {
-        return fileRepository.findById(id).orElse(null);
+        Optional<File> fileOpt = fileRepository.findById(id);
+        return fileOpt.orElse(null);
+    }
+
+    @Transactional
+    public boolean deleteFile(Long id) {
+        Optional<File> fileOpt = fileRepository.findById(id);
+        if (fileOpt.isPresent()) {
+            File file = fileOpt.get();
+            try {
+                Files.delete(Paths.get(file.getPath()));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            fileRepository.delete(file);
+            return true;
+        }
+        return false;
     }
 }
-
-//ici on n'a pas utiliser @override car on n'a pas d'interface
